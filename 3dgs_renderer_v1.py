@@ -1,16 +1,7 @@
 """Pedagogical sequential CPU 3D Gaussian Splatting renderer.
 
-Assignment 1 code, included here because the Unit 8 synthetic trainers reuse it. The compositing
-loop in `CpuRenderer.render` is still the Assignment 1 TODO: as shipped it returns a black image.
-
-That matters beyond this file. `3dgs_1_syn_trainer.py` and `3dgs_k_syn_trainer.py` build their
-synthetic ground truth by calling `render`, so until you paste your own Assignment 1 solution into
-the loop below they train against an all-black target and their reported PSNR is meaningless.
-Assignment 2 proper -- the backward pass in `3dgs_trainer.py` -- does not use this file and works
-without it.
-
 Usage:
-    python 3dgs_renderer_v1.py point_cloud.ply render.png
+    python3 3dgs_renderer_v1.1.py point_cloud.ply render.png
 
 The input must use the conventional 3DGS vertex properties:
 x, y, z, opacity, scale_0..2, rot_0..3, and f_dc_0..2.
@@ -31,7 +22,7 @@ from pathlib import Path
 _here = Path(__file__).resolve().parent
 if str(_here) not in sys.path:
     sys.path.insert(0, str(_here))
-# `shared/` sits beside this file in the assignment repo, and one level up in the course repo.
+# Prefer the local shared/ folder so this directory can run as a standalone repo.
 for _candidate in (_here / "shared", _here.parent / "shared"):
     if _candidate.is_dir():
         if str(_candidate) not in sys.path:
@@ -175,12 +166,43 @@ class CpuRenderer:
             y = py + 0.5
             for px in range(self.camera.width):
                 x = px + 0.5
-                # TODO: Calculate the RGB value at (x, y)
-                # Composite the sorted splats front to back, then finish with the
-                # background weighted by the remaining transmittance.
+                if py == 0 and px == 0:
+                    from math import exp as _exp
+                    _live = supports > 0.0
+                    _cx = projected.centres[_live, 0].tolist()
+                    _cy = projected.centres[_live, 1].tolist()
+                    _ca = projected.conics[_live, 0].tolist()
+                    _cb = (2.0 * projected.conics[_live, 1]).tolist()
+                    _cc = projected.conics[_live, 2].tolist()
+                    _op = projected.opacities[_live].tolist()
+                    _col = projected.colors[_live].tolist()
+                    _sup = supports[_live].tolist()
+                    _n = len(_op)
+                    _bg = background_color.tolist()
 
-                # TODO: The RHS is a placeholder
-                image[py, px] = np.zeros(3, dtype=np.float32)
+                r = g = b = 0.0
+                transmittance = 1.0
+                for i in range(_n):
+                    du = x - _cx[i]
+                    dv = y - _cy[i]
+                    q = _ca[i] * du * du + _cb[i] * du * dv + _cc[i] * dv * dv
+                    if q <= _sup[i]:
+                        alpha = _op[i] * _exp(-0.5 * q)
+                        if alpha > 0.99:
+                            alpha = 0.99
+                        if alpha >= ALPHA_CUTOFF:
+                            w = transmittance * alpha
+                            c = _col[i]
+                            r += w * c[0]
+                            g += w * c[1]
+                            b += w * c[2]
+                            transmittance -= w
+                            if transmittance < 1.0e-4:
+                                break
+
+                image[py, px] = (r + transmittance * _bg[0],
+                                 g + transmittance * _bg[1],
+                                 b + transmittance * _bg[2])
 
         return image
 

@@ -583,6 +583,54 @@ def render_backward(
             # occupies indices 3*i, 3*i+1, 3*i+2, and its quaternion 4*i .. 4*i+3.
             #
             # remaining_rgb = (final_rgb - prefix_rgb - transmittance * alpha * colour) / wp.max(next_transmittance, 1.0e-8)
+            
+            # for colouur
+            colour_adjoint = transmittance * alpha * pixel_grad
+            raw_colour = color[splat]
+
+            for k in range(3):
+                if raw_colour[k] > 0.0 and raw_colour[k] < 1.0: # no contribution if clamped
+                    wp.atomic_add(color_grad_flat, 3 * splat + k, colour_adjoint[k])
+
+            # for alpha
+            remaining_rgb = (final_rgb - prefix_rgb - transmittance * alpha * colour) / wp.max(next_transmittance, 1.0e-8)
+            alpha_adjoint = transmittance * wp.dot(pixel_grad, colour - remaining_rgb)
+            (
+                d_mean,
+                d_log_scale,
+                d_quat,
+                d_opacity,
+                d_cam,
+                d_px,
+                d_py,
+                d_w,
+                d_h,
+                d_focal,
+                d_ce,
+                d_cb,
+                d_cam_min) = wp.grad(alpha_at_pixel)(
+                    mean,
+                    log_scale,
+                    quaternion,
+                    opacity_logit,
+                    camera,
+                    px,
+                    py,
+                    float(width),
+                    float(height),
+                    focal,
+                    compact_enabled,
+                    compact_beta,
+                    compact_alpha_min)
+
+            for k in range(3):
+                wp.atomic_add(mean_grad_flat, 3 * splat + k, alpha_adjoint * d_mean[k])
+                wp.atomic_add(scale_grad_flat, 3 * splat + k, alpha_adjoint * d_log_scale[k])
+                
+            for k in range(4):
+                wp.atomic_add(quaternion_grad_flat, 4 * splat + k, alpha_adjoint * d_quat[k])
+
+            wp.atomic_add(opacity_grad, splat, alpha_adjoint * d_opacity)
 
             prefix_rgb = prefix_rgb + transmittance * alpha * colour
             transmittance = next_transmittance
@@ -761,6 +809,54 @@ def render_sparse_backward(
             # check it: at `sparse.samples_per_tile == TILE * TILE` every pixel in every tile is
             # sampled exactly once, so the sparse loss and every sparse gradient buffer must match
             # the dense ones.
+
+            # for colouur
+            colour_adjoint = transmittance * alpha * pixel_grad
+            raw_colour = color[splat]
+
+            for k in range(3):
+                if raw_colour[k] > 0.0 and raw_colour[k] < 1.0: # no contribution if clamped
+                    wp.atomic_add(color_grad_flat, 3 * splat + k, colour_adjoint[k])
+
+            # for alpha
+            remaining_rgb = (final_rgb - prefix_rgb - transmittance * alpha * colour) / wp.max(next_transmittance, 1.0e-8)
+            alpha_adjoint = transmittance * wp.dot(pixel_grad, colour - remaining_rgb)
+            (
+                d_mean,
+                d_log_scale,
+                d_quat,
+                d_opacity,
+                d_cam,
+                d_px,
+                d_py,
+                d_w,
+                d_h,
+                d_focal,
+                d_ce,
+                d_cb,
+                d_cam_min) = wp.grad(alpha_at_pixel)(
+                    mean,
+                    log_scale,
+                    quaternion,
+                    opacity_logit,
+                    camera,
+                    px,
+                    py,
+                    float(width),
+                    float(height),
+                    focal,
+                    compact_enabled,
+                    compact_beta,
+                    compact_alpha_min)
+
+            for k in range(3):
+                wp.atomic_add(mean_grad_flat, 3 * splat + k, alpha_adjoint * d_mean[k])
+                wp.atomic_add(scale_grad_flat, 3 * splat + k, alpha_adjoint * d_log_scale[k])
+                
+            for k in range(4):
+                wp.atomic_add(quaternion_grad_flat, 4 * splat + k, alpha_adjoint * d_quat[k])
+
+            wp.atomic_add(opacity_grad, splat, alpha_adjoint * d_opacity)
 
             prefix_rgb = prefix_rgb + transmittance * alpha * colour
             transmittance = next_transmittance

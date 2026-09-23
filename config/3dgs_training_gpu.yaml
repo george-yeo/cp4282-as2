@@ -32,3 +32,6 @@ training:
 densification:
   interval: 100
   fraction: 0.2
+
+sparse:
+  enabled: False

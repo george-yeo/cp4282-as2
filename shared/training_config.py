@@ -95,7 +95,7 @@ class TrainingConfig:
             "candidate_limit": 20000,
         },
         "sparse": {
-            "enabled": False,
+            "enabled": True,
             "samples_per_tile": 48,
         },
         "adaptive": {
